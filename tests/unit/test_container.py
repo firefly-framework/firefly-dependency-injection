@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from firefly.dependency_injection import DIC, prototype
+from src.firefly import DIC, prototype
 
 
 class Bar:
@@ -12,6 +12,12 @@ class Bar:
 class Baz:
     def __init__(self, bar: Bar):
         self.bar = bar
+
+
+class BarBaz:
+    def __init__(self, bar: Bar, baz: Baz):
+        self.bar = bar
+        self.baz = baz
 
 
 class Container1(DIC):
@@ -104,3 +110,12 @@ def test_factory_with_supplied_parameters():
     assert isinstance(foo.bar, Bar)
     assert foo.bar is bar
     assert foo.env_var == 'baz'
+
+
+def test_sub_container():
+    dic = Container1()
+    dic.register_container(Container3())
+
+    bar_baz = dic.build(BarBaz)
+    assert isinstance(bar_baz.bar, Bar)
+    assert isinstance(bar_baz.baz, Baz)

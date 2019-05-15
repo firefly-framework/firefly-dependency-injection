@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from src.firefly import DIC, prototype
+from firefly.di.application import DIC, prototype
 
 
 class Bar:
@@ -18,6 +18,18 @@ class BarBaz:
     def __init__(self, bar: Bar, baz: Baz):
         self.bar = bar
         self.baz = baz
+
+
+class PropInject:
+    bar: Bar = None
+
+
+class BaseClass:
+    bar: Bar = None
+
+
+class ChildPropInject(BaseClass):
+    baz: Baz = None
 
 
 class Container1(DIC):
@@ -119,3 +131,14 @@ def test_sub_container():
     bar_baz = dic.build(BarBaz)
     assert isinstance(bar_baz.bar, Bar)
     assert isinstance(bar_baz.baz, Baz)
+
+
+def test_property_injection():
+    dic = Container3()
+
+    prop_inject = dic.build(PropInject)
+    assert isinstance(prop_inject.bar, Bar)
+
+    child_prop_inject = dic.build(ChildPropInject)
+    assert isinstance(child_prop_inject.bar, Bar)
+    assert isinstance(child_prop_inject.baz, Baz)

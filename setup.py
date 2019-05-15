@@ -22,23 +22,22 @@ def setup_project_structure():
 
     config = ConfigParser()
     config.read('firefly.ini')
-    module = config.get('firefly', 'module')
+    for provider in config.sections():
+        if config.has_option(provider, 'is_extension'):
+            continue
 
-    di_dir = os.path.join(module, 'application', 'dependency_injection')
-    if not os.path.exists(di_dir):
-        os.makedirs(di_dir)
-    if not os.path.exists(os.path.join(di_dir, '__init__.py')):
-        code = """from firefly.application.dependency_injection import DIC
-
-
-class Container(DIC):
-    pass
-
-
-container = Container()
-"""
-        with open(os.path.join(di_dir, '__init__.py'), 'w') as fp:
-            fp.write(code)
+        di_dir = os.path.join(provider, 'application')
+        if not os.path.exists(di_dir):
+            os.makedirs(di_dir)
+        if not os.path.exists(os.path.join(di_dir, 'container.py')):
+            code = """from firefly.di.application import DIC
+    
+    
+    class Container(DIC):
+        pass
+    """
+            with open(os.path.join(di_dir, 'container.py'), 'w') as fp:
+                fp.write(code)
 
     os.chdir(current_dir)
 

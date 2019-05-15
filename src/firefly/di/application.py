@@ -1,14 +1,12 @@
-import importlib
 import inspect
 import os
-import warnings
 from abc import ABC
+from typing import Tuple
 from unittest.mock import MagicMock
 
 
 class DIC(ABC):
     def __init__(self):
-        self.cache = {}
         self.callables = {}
         self.static = {}
         self.singleton_names = []
@@ -46,8 +44,8 @@ class DIC(ABC):
         return a()
 
     def autowire(self, class_, params: dict = None, with_mocks: bool = False):
-        if str(class_) in self.cache:
-            return self.cache[str(class_)]
+        if hasattr(class_, '__original_init'):
+            return class_
 
         if inspect.isclass(class_) and hasattr(class_, '__init__'):
             class_ = self._wrap_constructor(class_, params, with_mocks)
@@ -74,10 +72,16 @@ class DIC(ABC):
             if m is not None:
                 return m
 
-    def _wrap_constructor(self, class_, params, with_mocks):
-        if hasattr(class_, '__original_init'):
-            return class_
+    def get_registered_services(self):
+        ret = {}
+        annotations = type(self).__annotations__
+        for k, v in type(self).__dict__.items():
+            if not str(k).startswith('_'):
+                ret[k] = annotations[k] if k in annotations else ''
 
+        return ret
+
+    def _wrap_constructor(self, class_, params, with_mocks):
         init = class_.__init__
 
         def init_wrapper(*args, **kwargs):
@@ -111,17 +115,14 @@ class DIC(ABC):
 
         setattr(class_, '__original_init', init)
         class_.__init__ = init_wrapper
-        self.cache[str(class_)] = class_
 
         return class_
 
     def _inject_properties(self, class_, with_mocks: bool):
-        annotations = {}
-        if hasattr(class_, '__annotations__'):
-            annotations = class_.__annotations__
+        properties, annotations = self._get_class_tree_properties(class_)
         unannotated = self._get_unannotated()
 
-        for k, v in class_.__dict__.items():
+        for k, v in properties.items():
             if str(k).startswith('_') or v is not None:
                 continue
 
@@ -130,11 +131,29 @@ class DIC(ABC):
             elif k in annotations:
                 t = self.match(k, annotations[k])
                 if t is not None:
-                    setattr(class_, k, getattr(self, t))
+                    setattr(class_, k, t)
             elif k in unannotated:
                 setattr(class_, k, getattr(self, k))
 
         return class_
+
+    def _get_class_tree_properties(self, class_: object, properties: dict = None, annotations: dict = None)\
+            -> Tuple[dict, dict]:
+        if properties is None and annotations is None:
+            properties = {}
+            annotations = {}
+
+        properties.update(class_.__dict__)
+        try:
+            annotations.update(class_.__annotations__)
+        except AttributeError:
+            pass
+
+        if hasattr(class_, '__bases__'):
+            for base in class_.__bases__:
+                properties, annotations = self._get_class_tree_properties(base, properties, annotations)
+
+        return properties, annotations
 
     def _get_annotations(self):
         if self.annotations is None:
@@ -236,29 +255,3 @@ class DIC(ABC):
 def prototype(cb):
     cb.__prototype = True
     return cb
-
-
-default_container = None
-if 'package_root' in os.environ:
-    try:
-        module = importlib.import_module(f'{os.environ.get("package_root")}.application.dependency_injection')
-        default_container = getattr(module, 'container')
-    except (TypeError, AttributeError):
-        pass
-
-
-def autowire(container: DIC = None):
-    def wrapper(object_, wrapper_container=container):
-        if wrapper_container is None and default_container is None:
-            warnings.warn(f'Could not autowire {str(object_)}. No container provided and package_root is not set.')
-            return object_
-
-        wrapper_container = wrapper_container or default_container
-
-        if inspect.isclass(object_):
-            return wrapper_container.autowire(object_)
-        elif inspect.isfunction(object_):
-            raise NotImplementedError('Need to implement autowiring for functions')
-
-        raise RuntimeError('@autowire used on an unknown type.')
-    return wrapper

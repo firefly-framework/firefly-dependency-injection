@@ -1,11 +1,12 @@
 import inspect
 import os
+import typing
 from abc import ABC
 from typing import Tuple
 from unittest.mock import MagicMock
 
 
-class DIC(ABC):
+class Container(ABC):
     def __init__(self):
         self.callables = {}
         self.static = {}
@@ -81,6 +82,14 @@ class DIC(ABC):
 
         return ret
 
+    def __getattr__(self, item):
+        if hasattr(self, item):
+            return getattr(self, item)
+        for container in self.child_containers:
+            if hasattr(container, item):
+                return getattr(container, item)
+        raise AttributeError(f'{item} does not exist in container')
+
     def _wrap_constructor(self, class_, params, with_mocks):
         init = class_.__init__
 
@@ -88,7 +97,7 @@ class DIC(ABC):
             constructor_args = self._get_constructor_args(class_)
 
             for name, type_ in constructor_args.items():
-                if type_ == DIC:
+                if type_ == Container:
                     kwargs[name] = self
                     continue
 
@@ -120,10 +129,15 @@ class DIC(ABC):
 
     def _inject_properties(self, class_, with_mocks: bool):
         properties, annotations = self._get_class_tree_properties(class_)
+
         unannotated = self._get_unannotated()
 
         for k, v in properties.items():
             if str(k).startswith('_') or v is not None:
+                continue
+
+            if k in annotations and annotations[k] == Container:
+                setattr(class_, k, self)
                 continue
 
             if with_mocks:
@@ -137,7 +151,7 @@ class DIC(ABC):
 
         return class_
 
-    def _get_class_tree_properties(self, class_: object, properties: dict = None, annotations: dict = None)\
+    def _get_class_tree_properties(self, class_: typing.Any, properties: dict = None, annotations: dict = None)\
             -> Tuple[dict, dict]:
         if properties is None and annotations is None:
             properties = {}
@@ -145,7 +159,7 @@ class DIC(ABC):
 
         properties.update(class_.__dict__)
         try:
-            annotations.update(class_.__annotations__)
+            annotations.update(typing.get_type_hints(class_))
         except AttributeError:
             pass
 
@@ -178,10 +192,10 @@ class DIC(ABC):
         init = class_.__init__
         if hasattr(class_, '__original_init'):
             init = getattr(class_, '__original_init')
-        constructor_args = inspect.getfullargspec(init)
+        constructor_args = typing.get_type_hints(init)
         items = {}
-        items.update(constructor_args.annotations.items())
-        for arg in constructor_args.args:
+        items.update(constructor_args)
+        for arg in constructor_args.keys():
             if arg != 'self' and arg not in items:
                 items[arg] = 'nil'
 

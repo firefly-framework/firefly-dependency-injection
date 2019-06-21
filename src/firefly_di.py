@@ -8,33 +8,46 @@ from unittest.mock import MagicMock
 
 class Container(ABC):
     def __init__(self):
-        self.callables = {}
-        self.static = {}
-        self.singleton_names = []
-        self.singletons = {}
-        self.annotations = None
-        self.unannotated = None
-        self.child_containers = []
+        self._cache = {}
+        self._annotations = None
+        self._unannotated = None
+        self._child_containers = []
 
-        class_ = type(self)
-        if not hasattr(class_, '__dic_processed'):
-            for k, v in self.__class__.__dict__.items():
-                if str(k).startswith('_'):
-                    continue
+    def __getattribute__(self, item: str):
+        if item.startswith('_'):
+            return object.__getattribute__(self, item)
 
-                if hasattr(v, '__prototype'):
-                    setattr(class_, k, self._prototype(k, v))
-                else:
-                    setattr(class_, k, self._singleton(k, v))
+        if item in self._cache:
+            return self._cache[item]()
 
-            setattr(class_, '__callables', self.callables)
-            setattr(class_, '__static', self.static)
-            setattr(class_, '__singleton_names', self.singleton_names)
-            setattr(class_, '__dic_processed', True)
+        if not hasattr(self.__class__, item):
+            for container in self._child_containers:
+                try:
+                    return getattr(container, item)
+                except AttributeError:
+                    pass
+            raise AttributeError(f'Object {item} does not exist in container.')
+
+        obj = object.__getattribute__(self, item)
+
+        if inspect.ismethod(obj) and obj.__name__ != '<lambda>':
+            return obj
+
+        if not callable(obj):
+            raise AttributeError(f'Attribute {item} is not callable.')
+
+        if inspect.isclass(obj):
+            self._cache[item] = lambda: self.build(obj)
+        elif inspect.isfunction(obj) or inspect.ismethod(obj):
+            obj = obj()
+            if inspect.isfunction(obj):
+                self._cache[item] = obj
+            else:
+                self._cache[item] = lambda: obj
         else:
-            self.callables = getattr(class_, '__callables')
-            self.static = getattr(class_, '__static')
-            self.singleton_names = getattr(class_, '__singleton_names')
+            self._cache[item] = lambda: obj
+
+        return self._cache[item]()
 
     def build(self, class_: object, params: dict = None):
         a = self.autowire(class_, params)
@@ -54,7 +67,7 @@ class Container(ABC):
         return self._inject_properties(class_, with_mocks)
 
     def register_container(self, container):
-        self.child_containers.append(container)
+        self._child_containers.append(container)
         return self
 
     def match(self, name: str, type_):
@@ -68,27 +81,19 @@ class Container(ABC):
         elif t is None and name in self._get_unannotated():
             return getattr(self, name)
 
-        for container in self.child_containers:
+        for container in self._child_containers:
             m = container.match(name, type_)
             if m is not None:
                 return m
 
     def get_registered_services(self):
         ret = {}
-        annotations = type(self).__annotations__
+        annotations = typing.get_type_hints(type(self))
         for k, v in type(self).__dict__.items():
             if not str(k).startswith('_'):
                 ret[k] = annotations[k] if k in annotations else ''
 
         return ret
-
-    def __getattr__(self, item):
-        if hasattr(self, item):
-            return getattr(self, item)
-        for container in self.child_containers:
-            if hasattr(container, item):
-                return getattr(container, item)
-        raise AttributeError(f'{item} does not exist in container')
 
     def _wrap_constructor(self, class_, params, with_mocks):
         init = class_.__init__
@@ -170,22 +175,20 @@ class Container(ABC):
         return properties, annotations
 
     def _get_annotations(self):
-        if self.annotations is None:
+        if self._annotations is None:
             container_object = type(self)
-            self.annotations = {}
-            if hasattr(container_object, '__annotations__'):
-                self.annotations = type(self).__annotations__
+            self._annotations = typing.get_type_hints(container_object)
 
-        return self.annotations
+        return self._annotations
 
     def _get_unannotated(self):
-        if self.unannotated is None:
+        if self._unannotated is None:
             unannotated = inspect.getmembers(type(self), lambda a: not (inspect.isroutine(a)))
-            self.unannotated = []
+            self._unannotated = []
             for entry in unannotated:
-                self.unannotated.append(entry[0])
+                self._unannotated.append(entry[0])
 
-        return self.unannotated
+        return self._unannotated
 
     @staticmethod
     def _get_constructor_args(class_):
@@ -200,53 +203,6 @@ class Container(ABC):
                 items[arg] = 'nil'
 
         return items
-
-    def _singleton(self, name: str, o):
-        self._add(name, o)
-        self.singleton_names.append(name)
-
-        return property(
-            fget=lambda c, n=name: self._get_singleton(n), fset=lambda c, val, n=name: self._set_singleton(n, val)
-        )
-
-    def _prototype(self, name: str, o):
-        self._add(name, o)
-
-        return property(fget=lambda c, n=name: self._get(n), fset=lambda c, val, n=name: self._set(n, val))
-
-    def _set_singleton(self, name, value):
-        self.singletons[name] = value
-
-    def _get_singleton(self, name: str):
-        if name in self.singletons:
-            return self.singletons[name]
-
-        o = self._get(name)
-
-        self.singletons[name] = o
-
-        return o
-
-    def _set(self, name: str, val):
-        if name in self.callables:
-            self.callables[name] = val
-        else:
-            self.static[name] = val
-
-    def _get(self, name: str):
-        if name in self.callables:
-            c = self.callables[name]
-            if c.__name__ == '<lambda>':
-                return c(self)
-            return c()
-        else:
-            return self.static[name]
-
-    def _add(self, name: str, o):
-        if callable(o):
-            self.callables[name] = o
-        else:
-            self.static[name] = o
 
     @staticmethod
     def _find_by_type(available: dict, t):
@@ -266,6 +222,5 @@ class Container(ABC):
             return os.environ.get(name.upper())
 
 
-def prototype(cb):
-    cb.__prototype = True
-    return cb
+# def factory(lambda_):
+#     return lambda self: lambda_

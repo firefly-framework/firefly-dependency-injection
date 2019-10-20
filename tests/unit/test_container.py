@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from firefly.di.application import DIC, prototype
+from firefly_di import Container
 
 
 class Bar:
@@ -32,23 +32,23 @@ class ChildPropInject(BaseClass):
     baz: Baz = None
 
 
-class Container1(DIC):
+class Container1(Container):
     bar: Bar = Bar
 
 
-class Container2(DIC):
+class Container2(Container):
     pass
 
 
-class Container3(DIC):
-    bar: Bar = lambda c: Bar()
-    baz: Baz = prototype(lambda c: Baz(c.bar))
+class Container3(Container):
+    bar: Bar = lambda self: Bar()
+    baz: Baz = lambda self: Baz(self.bar)
 
 
-class Container4(DIC):
+class Container4(Container):
     bar_singleton_static: Bar = Bar
     bar_singleton_lambda: Bar = lambda c: Bar()
-    bar_prototype: Bar = prototype(lambda c: Bar())
+    bar_prototype: Bar = lambda self: lambda: Bar()
 
 
 def get_foo():
@@ -116,7 +116,7 @@ def test_factory_with_supplied_parameters():
     c = Container2()
     foo_type = get_foo()
     bar = Bar()
-    foo = c.build(foo_type, {'bar': bar})
+    foo = c.build(foo_type, bar=bar)
 
     assert isinstance(foo, foo_type)
     assert isinstance(foo.bar, Bar)
@@ -142,3 +142,19 @@ def test_property_injection():
     child_prop_inject = dic.build(ChildPropInject)
     assert isinstance(child_prop_inject.bar, Bar)
     assert isinstance(child_prop_inject.baz, Baz)
+
+
+def test_child_containers():
+    dic = Container1()
+    dic.register_container(Container3())
+    assert isinstance(dic.baz, Baz)
+
+
+def test_circular_reference():
+    dic = Container1()
+    dic3 = Container3()
+    dic.register_container(dic3)
+    dic3.register_container(dic)
+
+    with pytest.raises(AttributeError):
+        print(dic.foobar)

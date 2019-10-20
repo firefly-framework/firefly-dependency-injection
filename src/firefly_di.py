@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import inspect
 import os
 import typing
 from abc import ABC
-from typing import Tuple
+from typing import Tuple, List
 from unittest.mock import MagicMock
 
 
@@ -21,12 +23,7 @@ class Container(ABC):
             return self._cache[item]()
 
         if not hasattr(self.__class__, item):
-            for container in self._child_containers:
-                try:
-                    return getattr(container, item)
-                except AttributeError:
-                    pass
-            raise AttributeError(f'Object {item} does not exist in container.')
+            return self._search_child_containers(item)
 
         obj = object.__getattribute__(self, item)
 
@@ -37,7 +34,8 @@ class Container(ABC):
             raise AttributeError(f'Attribute {item} is not callable.')
 
         if inspect.isclass(obj):
-            self._cache[item] = lambda: self.build(obj)
+            obj = self.build(obj)
+            self._cache[item] = lambda: obj
         elif inspect.isfunction(obj) or inspect.ismethod(obj):
             obj = obj()
             if inspect.isfunction(obj):
@@ -49,12 +47,19 @@ class Container(ABC):
 
         return self._cache[item]()
 
-    def build(self, class_: object, params: dict = None):
-        a = self.autowire(class_, params)
+    def _search_child_containers(self, item: str):
+        for container in self._child_containers:
+            if item in dir(container):
+                return getattr(container, item)
+
+        raise AttributeError(item)
+
+    def build(self, class_: object, **kwargs):
+        a = self.autowire(class_, kwargs)
         return a()
 
-    def mock(self, class_, params: dict = None):
-        a = self.autowire(class_, params, with_mocks=True)
+    def mock(self, class_, **kwargs):
+        a = self.autowire(class_, kwargs, with_mocks=True)
         return a()
 
     def autowire(self, class_, params: dict = None, with_mocks: bool = False):
@@ -70,8 +75,23 @@ class Container(ABC):
         self._child_containers.append(container)
         return self
 
-    def match(self, name: str, type_):
+    def match(self, name: str, type_, searched: List[Container] = None):
+        searched = searched or []
+        # Prevent circular references
+        if self in searched:
+            return
+        searched.append(self)
+
         t = self._find_by_type(self._get_annotations(), type_)
+        if len(t) == 1:
+            t = str(t[0])
+        elif len(t) == 0:
+            t = None
+        else:
+            for item in t:
+                if name == item or name.lstrip('_') == item:
+                    return getattr(self, item)
+            t = None
 
         # Found type in the container
         if t is not None:
@@ -82,18 +102,21 @@ class Container(ABC):
             return getattr(self, name)
 
         for container in self._child_containers:
-            m = container.match(name, type_)
+            m = container.match(name, type_, searched)
             if m is not None:
                 return m
 
     def get_registered_services(self):
         ret = {}
         annotations = typing.get_type_hints(type(self))
-        for k, v in type(self).__dict__.items():
+        for k, v in self.__class__.__dict__.items():
             if not str(k).startswith('_'):
                 ret[k] = annotations[k] if k in annotations else ''
 
         return ret
+
+    def clear_annotation_cache(self):
+        self._annotations = None
 
     def _wrap_constructor(self, class_, params, with_mocks):
         init = class_.__init__
@@ -138,12 +161,15 @@ class Container(ABC):
         unannotated = self._get_unannotated()
 
         for k, v in properties.items():
-            if str(k).startswith('_') or v is not None:
+            if str(k).startswith('__') or v is not None:
                 continue
 
-            if k in annotations and annotations[k] == Container:
-                setattr(class_, k, self)
-                continue
+            try:
+                if k in annotations and isinstance(self, annotations[k]):
+                    setattr(class_, k, self)
+                    continue
+            except TypeError:
+                pass
 
             if with_mocks:
                 setattr(class_, k, MagicMock(spec=annotations[k] if k in annotations else None))
@@ -182,11 +208,13 @@ class Container(ABC):
         return self._annotations
 
     def _get_unannotated(self):
+        annotations_ = self._get_annotations()
         if self._unannotated is None:
             unannotated = inspect.getmembers(type(self), lambda a: not (inspect.isroutine(a)))
             self._unannotated = []
             for entry in unannotated:
-                self._unannotated.append(entry[0])
+                if entry[0] not in annotations_:
+                    self._unannotated.append(entry[0])
 
         return self._unannotated
 
@@ -195,7 +223,10 @@ class Container(ABC):
         init = class_.__init__
         if hasattr(class_, '__original_init'):
             init = getattr(class_, '__original_init')
-        constructor_args = typing.get_type_hints(init)
+        try:
+            constructor_args = typing.get_type_hints(init)
+        except NameError:
+            return {}
         items = {}
         items.update(constructor_args)
         for arg in constructor_args.keys():
@@ -206,13 +237,20 @@ class Container(ABC):
 
     @staticmethod
     def _find_by_type(available: dict, t):
+        ret = []
+
         for key, value in available.items():
             try:
                 if issubclass(value, t):
-                    return key
+                    ret.append(key)
             except TypeError:
-                if str(value) == str(t):
-                    return key
+                try:
+                    if str(value) == str(t):
+                        ret.append(key)
+                except RecursionError:
+                    pass
+
+        return ret
 
     @staticmethod
     def _find_parameter(name: str):
@@ -222,5 +260,12 @@ class Container(ABC):
             return os.environ.get(name.upper())
 
 
-# def factory(lambda_):
-#     return lambda self: lambda_
+class MockContainer(Container):
+    pass
+
+
+mock_container = MockContainer()
+
+
+def inject_mocks(class_, **kwargs):
+    return mock_container.mock(class_, **kwargs)

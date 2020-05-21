@@ -16,7 +16,7 @@ import os
 
 import pytest
 
-from firefly_di import Container
+from firefly_di.__init__ import Container
 
 
 class Bar:

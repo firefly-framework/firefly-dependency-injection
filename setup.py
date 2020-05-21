@@ -26,7 +26,7 @@ setuptools.setup(
     description="A dependency injection framework for python",
     long_description=long_description,
     url="https://github.com/firefly19/python-dependency-injection",
-    packages=setuptools.PEP420PackageFinder.find('src'),
+    packages=['firefly_di'],
     package_dir={'': 'src'},
     classifiers=[
         "Programming Language :: Python :: 3.7",

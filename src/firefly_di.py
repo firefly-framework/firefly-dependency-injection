@@ -193,6 +193,8 @@ class Container(ABC):
                     setattr(class_, k, t)
             elif k in unannotated:
                 setattr(class_, k, getattr(self, k))
+            elif k.lstrip('_') in unannotated:
+                setattr(class_, k, getattr(self, k.lstrip('_')))
 
         return class_
 
@@ -224,7 +226,8 @@ class Container(ABC):
     def _get_unannotated(self):
         annotations_ = self._get_annotations()
         if self._unannotated is None:
-            unannotated = inspect.getmembers(type(self), lambda a: not (inspect.isroutine(a)))
+            # unannotated = inspect.getmembers(type(self), lambda a: not (inspect.isroutine(a)))
+            unannotated = inspect.getmembers(type(self))
             self._unannotated = []
             for entry in unannotated:
                 if entry[0] not in annotations_:

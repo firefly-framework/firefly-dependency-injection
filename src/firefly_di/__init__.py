@@ -116,6 +116,8 @@ class Container(ABC):
             return getattr(self, name)
 
         for container in self._child_containers:
+            if container is None:
+                continue
             m = container.match(name, type_, searched)
             if m is not None:
                 return m

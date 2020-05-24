@@ -192,6 +192,8 @@ class Container(ABC):
             elif k in annotations:
                 if annotations[k] is str:
                     t = self._find_parameter(k)
+                    if t is None:
+                        t = self._find_parameter(k.lstrip('_'))
                     if t is not None:
                         setattr(class_, k, t)
                         continue

@@ -190,6 +190,11 @@ class Container(ABC):
             if with_mocks:
                 setattr(class_, k, MagicMock(spec=annotations[k] if k in annotations else None))
             elif k in annotations:
+                if annotations[k] is str:
+                    t = self._find_parameter(k)
+                    if t is not None:
+                        setattr(class_, k, t)
+                        continue
                 t = self.match(k, annotations[k])
                 if t is not None:
                     setattr(class_, k, t)

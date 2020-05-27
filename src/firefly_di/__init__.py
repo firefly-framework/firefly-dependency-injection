@@ -86,7 +86,8 @@ class Container(ABC):
         return self._inject_properties(class_, with_mocks)
 
     def register_container(self, container):
-        self._child_containers.append(container)
+        if container not in self._child_containers:
+            self._child_containers.append(container)
         return self
 
     def match(self, name: str, type_, searched: List[Container] = None):
@@ -241,6 +242,8 @@ class Container(ABC):
             for entry in unannotated:
                 if entry[0] not in annotations_:
                     self._unannotated.append(entry[0])
+            for child_container in self._child_containers:
+                self._unannotated.extend(child_container._get_unannotated())
 
         return self._unannotated
 

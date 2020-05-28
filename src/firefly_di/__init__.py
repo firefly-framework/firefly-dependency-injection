@@ -77,19 +77,13 @@ class Container(ABC):
         return a()
 
     def autowire(self, class_, params: dict = None, with_mocks: bool = False):
-        print(f'Building: {class_}')
         if hasattr(class_, '__original_init'):
-            print('original init found, returning...')
             return class_
 
         if inspect.isclass(class_) and hasattr(class_, '__init__'):
-            print('Wrapping constructor')
             class_ = self._wrap_constructor(class_, params, with_mocks)
-            print(class_.__dict__)
 
-        print('Injecting properties')
         ret = self._inject_properties(class_, with_mocks)
-        print(ret.__dict__)
 
         return ret
 
@@ -184,15 +178,8 @@ class Container(ABC):
         return class_
 
     def _inject_properties(self, class_, with_mocks: bool):
-        print(f'_inject_properties ({class_})')
         properties, annotations = self._get_class_tree_properties(class_)
-        print('Class tree properties=============================')
-        print(properties)
-        print(annotations)
-
         unannotated = self._get_unannotated()
-        print('unannotated =============================')
-        print(unannotated)
 
         for k, v in properties.items():
             if str(k).startswith('__') or v is not None:
@@ -256,16 +243,11 @@ class Container(ABC):
             # unannotated = inspect.getmembers(type(self), lambda a: not (inspect.isroutine(a)))
             unannotated = inspect.getmembers(type(self))
             self._unannotated = []
-            print('looping over entries =====================')
             for entry in unannotated:
-                print(entry)
                 if entry[0] not in annotations_:
                     self._unannotated.append(entry[0])
-            print('==========================================')
             for child_container in self._child_containers:
                 self._unannotated.extend(child_container._get_unannotated())
-        else:
-            print('self._unannotated is already set')
 
         return self._unannotated
 

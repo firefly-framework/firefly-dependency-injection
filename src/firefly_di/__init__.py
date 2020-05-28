@@ -181,9 +181,15 @@ class Container(ABC):
         return class_
 
     def _inject_properties(self, class_, with_mocks: bool):
+        print(f'_inject_properties ({class_})')
         properties, annotations = self._get_class_tree_properties(class_)
+        print('Class tree properties=============================')
+        print(properties)
+        print(annotations)
 
         unannotated = self._get_unannotated()
+        print('unannotated =============================')
+        print(unannotated)
 
         for k, v in properties.items():
             if str(k).startswith('__') or v is not None:

@@ -248,16 +248,22 @@ class Container(ABC):
         return self._annotations
 
     def _get_unannotated(self):
+        print(f'_get_unannotated({self})')
         annotations_ = self._get_annotations()
         if self._unannotated is None:
             # unannotated = inspect.getmembers(type(self), lambda a: not (inspect.isroutine(a)))
             unannotated = inspect.getmembers(type(self))
             self._unannotated = []
+            print('looping over entries =====================')
             for entry in unannotated:
+                print(entry)
                 if entry[0] not in annotations_:
                     self._unannotated.append(entry[0])
+            print('==========================================')
             for child_container in self._child_containers:
                 self._unannotated.extend(child_container._get_unannotated())
+        else:
+            print('self._unannotated is already set')
 
         return self._unannotated
 

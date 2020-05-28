@@ -96,6 +96,9 @@ class Container(ABC):
     def register_container(self, container):
         if container not in self._child_containers:
             self._child_containers.append(container)
+        self._unannotated = None
+        for c in self._child_containers:
+            c._unannotated = None
         return self
 
     def match(self, name: str, type_, searched: List[Container] = None):
@@ -248,7 +251,6 @@ class Container(ABC):
         return self._annotations
 
     def _get_unannotated(self):
-        print(f'_get_unannotated({self})')
         annotations_ = self._get_annotations()
         if self._unannotated is None:
             # unannotated = inspect.getmembers(type(self), lambda a: not (inspect.isroutine(a)))
@@ -264,8 +266,6 @@ class Container(ABC):
                 self._unannotated.extend(child_container._get_unannotated())
         else:
             print('self._unannotated is already set')
-            for child_container in self._child_containers:
-                self._unannotated.extend(child_container._get_unannotated())
 
         return self._unannotated
 

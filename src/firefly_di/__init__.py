@@ -77,13 +77,21 @@ class Container(ABC):
         return a()
 
     def autowire(self, class_, params: dict = None, with_mocks: bool = False):
+        print(f'Building: {class_}')
         if hasattr(class_, '__original_init'):
+            print('original init found, returning...')
             return class_
 
         if inspect.isclass(class_) and hasattr(class_, '__init__'):
+            print('Wrapping constructor')
             class_ = self._wrap_constructor(class_, params, with_mocks)
+            print(class_.__dict__)
 
-        return self._inject_properties(class_, with_mocks)
+        print('Injecting properties')
+        ret = self._inject_properties(class_, with_mocks)
+        print(ret.__dict__)
+
+        return ret
 
     def register_container(self, container):
         if container not in self._child_containers:

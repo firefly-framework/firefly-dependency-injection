@@ -14,9 +14,6 @@
 
 import setuptools
 
-with open("README.md", "r") as fh:
-    long_description = fh.read()
-
 
 setuptools.setup(
     name='firefly-dependency-injection',
@@ -24,7 +21,6 @@ setuptools.setup(
     author="JD Williams",
     author_email="me@jdwilliams.xyz",
     description="A dependency injection framework for python",
-    long_description=long_description,
     url="https://github.com/firefly19/python-dependency-injection",
     packages=['firefly_di'],
     package_dir={'': 'src'},
